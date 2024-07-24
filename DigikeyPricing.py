@@ -2,7 +2,7 @@ import requests
 import json
 import os
 import sys
-import pandas
+import pandas as pd
 import re
 import urllib.parse as urlparse
 import math
@@ -11,13 +11,17 @@ import math
 #python3 DigikeyPricing.py "Bill Of Materials PowerPortMax-v5.csv" 50
 client_id = str(os.environ['DIGIKEY_CLIENT_ID'])
 client_secret = str(os.environ['DIGIKEY_CLIENT_SECRET'])
-df = pandas.read_csv(sys.argv[1])
+df = pd.read_csv(sys.argv[1])
 
 #manipulate the data as needed
 df['Quantity']*=int(sys.argv[2])
 df = df[['Quantity','Value','Stock Code']]
+nfcon = (df['Stock Code']=='nf') | (df['Stock Code']=='NO FIT')
+nfdf = df[nfcon]
+df = df[~nfcon] 
 agg_functions = {'Value': 'first', 'Quantity': 'sum'}
 df = df.groupby(df['Stock Code']).aggregate(agg_functions).reset_index()
+df = pd.concat([df, nfdf], ignore_index=True).reset_index()
 
 missing_components = []
 total_cost = 0
@@ -86,8 +90,6 @@ def keywordsearch(row):
 
 
 for index, row in df.iterrows():
-    print(row['Stock Code'])
-    
     pricing_response, pricing_data = priceup(row)
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
@@ -123,5 +125,7 @@ for index, row in df.iterrows():
         except:
             print("CC")
 
-print(missing_components)
-print("£"+str(total_cost))
+print("\nMiss matching stock codes are as follow:\n")
+for item in missing_components:
+    print(getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
+print("\nThe total cost is £{:0.2f}".format(round(total_cost,2)))
