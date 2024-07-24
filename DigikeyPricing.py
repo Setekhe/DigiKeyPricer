@@ -9,6 +9,7 @@ import math
 
 #cd Documents/DigiKeyBOM
 #python3 DigikeyPricing.py "Bill Of Materials PowerPortMax-v5.csv" 50
+
 client_id = str(os.environ['DIGIKEY_CLIENT_ID'])
 client_secret = str(os.environ['DIGIKEY_CLIENT_SECRET'])
 df = pd.read_csv(sys.argv[1])
@@ -16,10 +17,12 @@ df = pd.read_csv(sys.argv[1])
 #manipulate the data as needed
 df['Quantity']*=int(sys.argv[2])
 df = df[['Quantity','Value','Stock Code']]
+#NO FIT conditions
 nfcon = (df['Stock Code']=='nf') | (df['Stock Code']=='NO FIT')
 nfdf = df[nfcon]
 df = df[~nfcon] 
 agg_functions = {'Value': 'first', 'Quantity': 'sum'}
+#Assume stock codes are truth axioms
 df = df.groupby(df['Stock Code']).aggregate(agg_functions).reset_index()
 df = pd.concat([df, nfdf], ignore_index=True).reset_index()
 
@@ -128,4 +131,4 @@ for index, row in df.iterrows():
 print("\nMiss matching stock codes are as follow:\n")
 for item in missing_components:
     print(getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
-print("\nThe total cost is £{:0.2f}".format(round(total_cost,2)))
+print("\n---------------------------\nThe total cost is £{:0.2f}\n---------------------------\n".format(round(total_cost,2)))
