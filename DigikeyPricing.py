@@ -10,38 +10,106 @@ import math
 #cd Documents/DigiKeyBOM
 #python3 DigikeyPricing.py "Bill Of Materials PowerPortMax-v5.csv" 50
 
-client_id = str(os.environ['DIGIKEY_CLIENT_ID'])
-client_secret = str(os.environ['DIGIKEY_CLIENT_SECRET'])
-df = pd.read_csv(sys.argv[1])
+#client data template
+client_data_template = {'client_id':'0','client_secret':'0'}
 
-#manipulate the data as needed
-df['Quantity']*=int(sys.argv[2])
-df = df[['Quantity','Value','Stock Code']]
-#NO FIT conditions
-nfcon = (df['Stock Code']=='nf') | (df['Stock Code']=='NO FIT')
-nfdf = df[nfcon]
-df = df[~nfcon] 
+#aggregate functions
 agg_functions = {'Value': 'first', 'Quantity': 'sum'}
-#Assume stock codes are truth axioms
-df = df.groupby(df['Stock Code']).aggregate(agg_functions).reset_index()
-df = pd.concat([df, nfdf], ignore_index=True).reset_index()
-
+#API pricing variables
+logged_in = False
 missing_components = []
 total_cost = 0
-
 #token api url
 url = 'https://api.digikey.com/v1/oauth2/token'
-#required data for token request
-url_data = {
-    'client_id': client_id,
-    'client_secret': client_secret,
-    'grant_type': 'client_credentials'
-}
-#handle the response and save 
-response = requests.post(url, data=url_data)
-if response.status_code == 200:
-    response_data = response.json()
-    code = response_data['access_token']
+df = {}
+#This script takes 2 arguments
+if len(sys.argv)== 3:
+    if not sys.argv[2].isdigit():
+        sys.exit("\n The second argument must be a positive integer > 0.")
+    try:
+        df = pd.read_csv(sys.argv[1])
+    except:
+        sys.exit("\n The first argument must be a string. It must be the name of the CSV formatted BOM file located in the same folder as this is being run, or be the path to the file.")
+    try:
+        df = df[['Quantity','Value','Stock Code']]
+    except:
+        sys.exit("\n The BOM file is malformed and needs to contain one \'Quantity\' column, one \'Stock Code\' column and one \'Value\' column.")
+    if not (df['Quantity'].dtype=='int32' or df['Quantity'].dtype=='int64'):
+        sys.exit("\n The Quantity column must only contains integers")
+    if not (df['Stock Code'].dtype=='object' and df['Value'].dtype=='object'):
+        sys.exit("\n The Stock Code and Value column must only contains objects e.g. strings.")
+    #manipulate the data as needed
+    df['Quantity']*=int(sys.argv[2])
+    #NO FIT conditions
+    nfcon = df['Stock Code'].str.contains(r'\d', regex=True)
+    nfdf = df[~nfcon]
+    df = df[nfcon] 
+    #Assume stock codes are truth axioms
+    df = df.groupby(df['Stock Code']).aggregate(agg_functions).reset_index()
+    df = pd.concat([df, nfdf], ignore_index=True).reset_index()
+else:
+    sys.exit("\n The script takes two inputs, a string containing the name of the BOM file, and a positive integer representing how many sets are desired.")
+
+
+
+
+#login via credential file
+if True:
+    creds_file = 'credentials.json'
+    try:
+        # Try to open the credentials file in read mode
+        with open(creds_file, 'r') as cred_data:
+            # Attempt to load JSON data from the file
+            creds = json.load(cred_data)  
+        # Check if 'client_id' key exists in the loaded JSON
+        if 'client_id' not in creds:
+            # Open the credentials file in write mode to update it
+            with open(creds_file, 'w') as cred_data:
+                json.dump(client_data_template, cred_data)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If the file does not exist or JSON is invalid, create or overwrite the file
+        with open(creds_file, 'w') as cred_data:
+            json.dump(client_data_template, cred_data)
+        
+
+    #handle the response and save 
+    while logged_in == False:
+        with open(creds_file, 'r') as cred_data:
+            creds = json.load(cred_data)  
+        #required data for token request
+        url_data = {
+        'client_id': creds['client_id'],
+        'client_secret': creds['client_secret'],
+        'grant_type': 'client_credentials'
+        }
+        response = requests.post(url, data=url_data)
+        if response.status_code == 200:
+            response_data = response.json()
+            code = response_data['access_token']
+            logged_in = True
+            client_id = creds['client_id']
+        elif response.status_code == 401:
+            creds['client_id'] = input("\n Please (re)type your client id:\n")
+            creds['client_secret'] = input("\n Please (re)type your client secret:\n")
+            with open(creds_file, 'w') as cred_data:
+                json.dump(creds, cred_data)
+#login via environment variables
+else:
+    while logged_in == False:
+        url_data = {
+        'client_id': str(os.environ['DIGIKEY_CLIENT_ID']),
+        'client_secret': str(os.environ['DIGIKEY_CLIENT_SECRET']),
+        'grant_type': 'client_credentials'
+        }
+        response = requests.post(url, data=url_data)
+        if response.status_code == 200:
+            response_data = response.json()
+            code = response_data['access_token']
+            logged_in = True
+            client_id = str(os.environ['DIGIKEY_CLIENT_ID'])
+        elif response.status_code == 401:
+            blank = input(" Your enviornment variables are set incorrectly.\n DIGIKEY_CLIENT_ID must contian your client id and DIGIKEY_CLIENT_SECRET must contain your client secret.\n Restart your CLI once you have changed them.\n")
+
     
 def totalup (data):
     quantity = pricing_data["Products"][0]['RecommendedQuantity']
@@ -122,13 +190,18 @@ for index, row in df.iterrows():
                 total_cost += totalup(pricing_data)
             except:
                 print("BB")
+        if re.search(r"([A-Za-z]+( [A-Za-z]+)+) '[0-9]+' ([A-Za-z0-9]+( [A-Za-z0-9]+)+)\.",pricing_data['detail']):
+            print("\n The quantity of item "+row['Stock Code']+" is likely too high (e.g. over 2,147,483,647) or is otherwise impossible to process.")
+        else:
+            print(pricing_data)
     else:
         try:
             total_cost += totalup(pricing_data)
         except:
             print("CC")
 
-print("\nMiss matching stock codes are as follow:\n")
+print("\n\n ------------------------------------------\n Miss matching stock codes are as follows:\n")
 for item in missing_components:
-    print(getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
-print("\n---------------------------\nThe total cost is £{:0.2f}\n---------------------------\n".format(round(total_cost,2)))
+    print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
+print("\n ------------------------------------------\n")
+print("\n ---------------------------\n The total cost is £{:0.2f}\n ---------------------------\n".format(round(total_cost,2)))
