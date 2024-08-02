@@ -19,6 +19,7 @@ agg_functions = {'Value': 'first', 'Quantity': 'sum'}
 logged_in = False
 missing_components = []
 total_cost = 0
+out_of_stock_cost = 0
 #token api url
 url = 'https://api.digikey.com/v1/oauth2/token'
 df = {}
@@ -112,10 +113,11 @@ else:
 
     
 def totalup (data):
-    quantity = pricing_data["Products"][0]['RecommendedQuantity']
-    break_values = pricing_data["Products"][0]['StandardPricing']
+    quantity = data["Products"][0]['RecommendedQuantity']
+    break_values = data["Products"][0]['StandardPricing']
     for break_value in reversed(break_values):
         if break_value['BreakQuantity']<= quantity:
+            print(" at a quantity of "+str(quantity)+" comes at a unit price of "+str(break_value['UnitPrice'])+".")
             return math.ceil(((float(break_value['UnitPrice'])*int(quantity))*100))/100
 
         
@@ -138,8 +140,7 @@ def priceup (row,alt = "0"):
         'requestedQuantity' : int(row['Quantity'])
     }
     pricing_response = requests.get(pricing_url, headers=pricing_header, params=pricing_data)
-    pricing_data = pricing_response.json()
-    return pricing_response, pricing_data
+    return pricing_response
 
 def keywordsearch(row):
     search_url = 'https://api.digikey.com/products/v4/search/keyword'
@@ -156,25 +157,26 @@ def keywordsearch(row):
     }
     search_response = requests.post(search_url, headers=search_header, json=search_data)
     #return the first digikey number of the first exact match of the product
-    return(search_response.json()['ExactMatches'][0]['ProductVariations'][0]['DigiKeyProductNumber'])
+    DGKNum = search_response.json()['ExactMatches'][0]['ProductVariations'][0]['DigiKeyProductNumber']
+    print(" "+row['Stock Code']+" was unresolvable and is being searched for using the DigiKey code of " + DGKNum+ " instead.") 
     
-
-
-for index, row in df.iterrows():
-    pricing_response, pricing_data = priceup(row)
+    return(DGKNum)
+    
+def response_handler(row, price_response):
+    global total_cost, out_of_stock_cost
+    pricing_data = pricing_response.json()
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
         if 'PART_NOT_FOUND' in pricing_data['title']:
+            print(" cannot be found.\n")
             missing_components.append(row)
+            return True, row
         #if the manufacturing number doesn't align or is ambigious find the digikey code
-        elif 'UNRESOLVED_MANF_NUMBER' in pricing_data['title']:
+        if 'UNRESOLVED_MANF_NUMBER' in pricing_data['title']:
             DGKNum = keywordsearch(row)
-            pricing_response, pricing_data = priceup(row,DGKNum)
-            try:
-                total_cost += totalup(pricing_data)
-            except:
-                print("AA")
+            row['Stock Code'] = DGKNum
+            return False, row
         else:
             print(pricing_data)
     #if the response reports an error with the request format
@@ -184,24 +186,37 @@ for index, row in df.iterrows():
             #calculate what the quantity must be rounded up to
             multiple = int(pricing_data['title'].replace(" "+row['Stock Code'],'').split(" ")[-1])
             row['Quantity']= (int(row['Quantity'])//multiple +1) * multiple
-            #retry the pricing
-            pricing_response, pricing_data = priceup(row)
-            try:
-                total_cost += totalup(pricing_data)
-            except:
-                print("BB")
+            print(" needs to purchased in multiples of "+str(multiple)+" and so will be purchased at a volume of " +str(row['Quantity'])+".")
+            return False, row
         if re.search(r"([A-Za-z]+( [A-Za-z]+)+) '[0-9]+' ([A-Za-z0-9]+( [A-Za-z0-9]+)+)\.",pricing_data['detail']):
-            print("\n The quantity of item "+row['Stock Code']+" is likely too high (e.g. over 2,147,483,647) or is otherwise impossible to process.")
+            print(" \n The quantity of item "+row['Stock Code']+" is likely too high (e.g. over 2,147,483,647) or is otherwise impossible to process.\n")
+            missing_components.append(row)
+            return True, row
         else:
             print(pricing_data)
     else:
-        try:
-            total_cost += totalup(pricing_data)
-        except:
-            print("CC")
-
+        cost = totalup(pricing_data)
+        if pricing_data["Products"][0]["StockNote"] != "In Stock":
+            print(" "+row['Stock Code'] + " would be purchased at: "+ str(cost)+", but is out of stock.\n")
+            out_of_stock_cost += cost
+            return True, row
+        else:
+            print(" "+row['Stock Code'] + " can be purchased at: "+ str(cost))
+            total_cost += cost
+            print(" Current total is: " + str(total_cost)+"\n")
+            return True, row
+print("\n")
+for index, row in df.iterrows():
+    complete = False
+    while complete == False:
+        print(" "+row['Stock Code'], end = "")
+        pricing_response = priceup(row)
+        complete, row = response_handler(row, pricing_response)
+    
 print("\n\n ------------------------------------------\n Miss matching stock codes are as follows:\n")
 for item in missing_components:
     print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
 print("\n ------------------------------------------\n")
-print("\n ---------------------------\n The total cost is £{:0.2f}\n ---------------------------\n".format(round(total_cost,2)))
+print("\n ----------------------------\n The total cost is £{:0.2f}\n ----------------------------\n".format(round(total_cost,2)))
+if(out_of_stock_cost>0):
+    print("\n --------------------------------------------\n The cost of out of stock items is £{:0.2f}\n --------------------------------------------\n".format(round(out_of_stock_cost,2)))
