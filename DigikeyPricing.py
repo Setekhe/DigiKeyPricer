@@ -8,7 +8,6 @@ import re
 import urllib.parse as urlparse
 import math
 
-#cd Documents/DigiKeyBOM
 #python3 DigikeyPricing.py "Bill Of Materials PowerPortMax-v5.csv" 50
 
 #client data template
@@ -21,6 +20,8 @@ logged_in = False
 missing_components = []
 total_cost = 0
 out_of_stock_cost = 0
+common_deliminators = [",","_","-"," ","/"]
+swaps = 0
 #token api url
 url = 'https://api.digikey.com/v1/oauth2/token'
 df = {}
@@ -164,15 +165,29 @@ def keywordsearch(row):
     return(DGKNum)
     
 def response_handler(row, price_response):
-    global total_cost, out_of_stock_cost
+    global total_cost, out_of_stock_cost, swaps
     pricing_data = pricing_response.json()
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
         if 'PART_NOT_FOUND' in pricing_data['title']:
-            print(" cannot be found.\n")
-            missing_components.append(row)
-            return True, row
+            if any(char in row['Stock Code'] for char in common_deliminators):
+                print(" cannot be found. Will attempt with a different deliminator.\n")
+                if swaps >= len(common_deliminators):
+                    print(row['Stock Code']+ " cannot be found using any common deliminator")
+                    missing_components.append(row)
+                    swaps = 0
+                    return True, row
+                else:
+                    for char in common_deliminators:
+                        if char in row['Stock Code']:
+                            row['Stock Code'] = row['Stock Code'].replace(char, common_deliminators[swaps])
+                    swaps += 1
+                    return False, row
+            else:
+                missing_components.append(row)
+                print(" cannot be found.")
+                return True, row
         #if the manufacturing number doesn't align or is ambigious find the digikey code
         if 'UNRESOLVED_MANF_NUMBER' in pricing_data['title']:
             DGKNum = keywordsearch(row)
@@ -209,6 +224,7 @@ def response_handler(row, price_response):
 print("\n")
 for index, row in df.iterrows():
     complete = False
+    swaps = 0
     while complete == False:
         print(" "+row['Stock Code'], end = "")
         pricing_response = priceup(row)
