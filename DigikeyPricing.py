@@ -176,9 +176,10 @@ def keywordsearch(row):
     
     return(DGKNum)
     
-def response_handler(row, price_response):
+def response_handler(row, pricing_response):
     global total_cost, out_of_stock_cost, swaps
     pricing_data = pricing_response.json()
+    print(pricing_data)
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
@@ -186,7 +187,7 @@ def response_handler(row, price_response):
             if any(char in row['Stock Code'] for char in common_deliminators):
                 print(" cannot be found. Will attempt with a different deliminator.\n")
                 if swaps >= len(common_deliminators):
-                    print("\n "+row['Stock Code']+ " cannot be found using any common deliminators.")
+                    print("\n "+row['Stock Code']+ " cannot be found using any common deliminators.\n")
                     missing_components.append(row)
                     swaps = 0
                     return True, row
@@ -214,7 +215,7 @@ def response_handler(row, price_response):
             #calculate what the quantity must be rounded up to
             multiple = int(pricing_data['title'].replace(" "+row['Stock Code'],'').split(" ")[-1])
             row['Quantity']= (int(row['Quantity'])//multiple +1) * multiple
-            print(" needs to purchased in multiples of "+str(multiple)+" and so will be purchased at a volume of " +str(row['Quantity'])+".")
+            print(" needs to purchased in multiples of "+str(multiple)+" and so will be purchased at a volume of" +str(row['Quantity'])+".")
             return False, row
         if re.search(r"([A-Za-z]+( [A-Za-z]+)+) '[0-9]+' ([A-Za-z0-9]+( [A-Za-z0-9]+)+)\.",pricing_data['detail']):
             print(" \n The quantity of item "+row['Stock Code']+" is likely too high (e.g. over 2,147,483,647) or is otherwise impossible to process.\n")
