@@ -20,7 +20,7 @@ logged_in = False
 missing_components = []
 total_cost = 0
 out_of_stock_cost = 0
-common_deliminators = [",","_","-"," ","/"]
+common_deliminators = [",","_","-"," ","/","~"]
 swaps = 0
 #token api url
 url = 'https://api.digikey.com/v1/oauth2/token'
@@ -114,13 +114,25 @@ else:
             blank = input(" Your enviornment variables are set incorrectly.\n DIGIKEY_CLIENT_ID must contian your client id and DIGIKEY_CLIENT_SECRET must contain your client secret.\n Restart your CLI once you have changed them.\n")
 
     
-def totalup (data):
-    quantity = data["Products"][0]['RecommendedQuantity']
-    break_values = data["Products"][0]['StandardPricing']
-    for break_value in reversed(break_values):
-        if break_value['BreakQuantity']<= quantity:
-            print(" at a quantity of "+str(quantity)+" comes at a unit price of "+str(break_value['UnitPrice'])+".")
-            return math.ceil(((float(break_value['UnitPrice'])*int(quantity))*100))/100
+def totalup (row, data):
+    quantity = row['Quantity']
+    break_values = list(reversed(data["Products"][0]['StandardPricing']))
+    bva = 0
+    bvb = 0
+    if break_values[0]['BreakQuantity']<= quantity:
+            print(" at a quantity of "+str(quantity)+" comes at a unit price of £"+str(break_values[0]['UnitPrice'])+".")
+            return math.ceil(((float(break_values[0]['UnitPrice'])*int(quantity))*100))/100, row
+    for i in range(1,len(break_values)):
+        if break_values[i]['BreakQuantity']<= quantity:
+            print(" at a quantity of "+str(quantity)+" comes at a unit price of £"+str(break_values[i]['UnitPrice'])+".")
+            bva = math.ceil(((float(break_values[i]['UnitPrice'])*int(quantity))*100))/100
+            bvb = math.ceil(((float(break_values[i-1]['UnitPrice'])*int(break_values[i-1]['BreakQuantity']))*100))/100
+            if bvb <= bva:
+                row['Quantity'] = break_values[i-1]['BreakQuantity']
+                print(" This would total to £"+str(bva)+ ". However at a quantity of "+str(break_values[i-1]['BreakQuantity'])+ " it would cost £"+str(bvb)+".")
+                return bvb, row
+            else:
+                return bva, row
 
         
     
@@ -174,7 +186,7 @@ def response_handler(row, price_response):
             if any(char in row['Stock Code'] for char in common_deliminators):
                 print(" cannot be found. Will attempt with a different deliminator.\n")
                 if swaps >= len(common_deliminators):
-                    print(row['Stock Code']+ " cannot be found using any common deliminator")
+                    print("\n "+row['Stock Code']+ " cannot be found using any common deliminators.")
                     missing_components.append(row)
                     swaps = 0
                     return True, row
@@ -211,13 +223,13 @@ def response_handler(row, price_response):
         else:
             print(pricing_data)
     else:
-        cost = totalup(pricing_data)
+        cost,row = totalup(row, pricing_data)
         if pricing_data["Products"][0]["StockNote"] != "In Stock":
-            print(" "+row['Stock Code'] + " would be purchased at: "+ str(cost)+", but is out of stock.\n")
+            print(" "+row['Stock Code'] + " would be purchased at a total of £"+ str(cost)+", but is out of stock.\n")
             out_of_stock_cost += cost
             return True, row
         else:
-            print(" "+row['Stock Code'] + " can be purchased at: "+ str(cost))
+            print(" "+row['Stock Code'] + " can be purchased for a total of  £"+ str(cost))
             total_cost += cost
             print(" Current total is: " + str(total_cost)+"\n")
             return True, row
@@ -233,7 +245,7 @@ for index, row in df.iterrows():
 print("\n\n ------------------------------------------\n Miss matching stock codes are as follows:\n")
 for item in missing_components:
     print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
-print("\n ------------------------------------------\n")
+print(" ------------------------------------------\n")
 print("\n ----------------------------\n The total cost is £{:0.2f}\n ----------------------------\n".format(round(total_cost,2)))
 if(out_of_stock_cost>0):
     print("\n --------------------------------------------\n The cost of out of stock items is £{:0.2f}\n --------------------------------------------\n".format(round(out_of_stock_cost,2)))
