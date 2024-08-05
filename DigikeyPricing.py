@@ -136,10 +136,10 @@ def totalup (row, data):
     else:
         if break_reels[0]['BreakQuantity']<= quantity:
             i=0
-            while i*break_reels[0]['BreakQuantity']<quantity:
+            while i*break_reels[-1]['BreakQuantity']<quantity:
                 i+=1
             # Unit Price * one over needed reels
-            bvb = math.ceil(((float(break_reels[0]['UnitPrice']*(i)*break_reels[0]['BreakQuantity']))*100))/100
+            bvb = math.ceil(((float(break_reels[0]['UnitPrice']*(i)*break_reels[-1]['BreakQuantity']))*100))/100
             #cut calculator
             break_cut_cost, quantity = breakcutloop (break_cuts, (quantity - (break_reels[0]['BreakQuantity']*(i-1))))
             quantity = quantity + break_reels[i]['BreakQuantity']*(i-1)
@@ -155,16 +155,16 @@ def totalup (row, data):
             for i in range(1,len(break_reels)):
                 if break_reels[i]['BreakQuantity']<= quantity:
                     j=0
-                    while j*break_reels[i]['BreakQuantity']<quantity:
+                    while j*break_reels[-1]['BreakQuantity']<quantity:
                         j+=1
                     #an entire break value above
                     bvc = math.ceil(((float(break_reels[i-1]['UnitPrice']*break_reels[i-1]['BreakQuantity']))*100))/100
                     #an extra lot added
-                    bvb = math.ceil(((float(break_reels[i]['UnitPrice']*(j)*break_reels[i]['BreakQuantity']))*100))/100
-                    break_cut_cost, quantity = breakcutloop (break_cuts, (quantity - (break_reels[i]['BreakQuantity']*(j-1))))
-                    quantity = quantity + break_reels[i]['BreakQuantity']*(j-1)
+                    bvb = math.ceil(((float(break_reels[i]['UnitPrice']*(j)*break_reels[-1]['BreakQuantity']))*100))/100
+                    break_cut_cost, quantity = breakcutloop (break_cuts, (quantity - (break_reels[-1]['BreakQuantity']*(j-1))))
+                    quantity = quantity + break_reels[-1]['BreakQuantity']*(j-1)
                     #make up difference with cuts
-                    bva = math.ceil(((float(break_reels[i]['UnitPrice']*(j-1)*break_reels[i]['BreakQuantity']))*100))/100 + break_cut_cost
+                    bva = math.ceil(((float(break_reels[i]['UnitPrice']*(j-1)*break_reels[-1]['BreakQuantity']))*100))/100 + break_cut_cost
                     if bvc <= bvb and bvc <= bva:
                         row['Quantity'] = quantity
                         return bvc, row
@@ -176,8 +176,6 @@ def totalup (row, data):
                         return bva, row
                 
 def breakcutloop ( break_cuts, quantity):
-    print(break_cuts)
-    print(quantity)
     if break_cuts[0]['BreakQuantity']<= quantity:
         return math.ceil(((float(break_cuts[0]['UnitPrice'])*int(quantity))*100))/100, quantity
     for i in range(1,len(break_cuts)):
