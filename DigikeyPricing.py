@@ -116,26 +116,79 @@ else:
     
 def totalup (row, data):
     quantity = row['Quantity']
-    break_values = list(reversed(data["Products"][0]['StandardPricing']))
+    break_reels = []
+    #math.ceil(((float(break_cuts[i-1]['UnitPrice'])*int(break_cuts[i-1]['BreakQuantity']))*100))/100
+    #if both reels and cuts exist
+    if(len(data["Products"])>1):
+        break_reels = list(reversed(data["Products"][0]['StandardPricing']))
+        break_cuts = list(reversed(data["Products"][1]['StandardPricing']))
+    else: #only save cuts
+        break_cuts = list(reversed(data["Products"][0]['StandardPricing']))
     bva = 0
     bvb = 0
-    if break_values[0]['BreakQuantity']<= quantity:
-            print(" at a quantity of "+str(quantity)+" comes at a unit price of £"+str(break_values[0]['UnitPrice'])+".")
-            return math.ceil(((float(break_values[0]['UnitPrice'])*int(quantity))*100))/100, row
-    for i in range(1,len(break_values)):
-        if break_values[i]['BreakQuantity']<= quantity:
-            print(" at a quantity of "+str(quantity)+" comes at a unit price of £"+str(break_values[i]['UnitPrice'])+".")
-            bva = math.ceil(((float(break_values[i]['UnitPrice'])*int(quantity))*100))/100
-            bvb = math.ceil(((float(break_values[i-1]['UnitPrice'])*int(break_values[i-1]['BreakQuantity']))*100))/100
+    bvc = 0
+    #if their are no reel options or they are out of stock, only use cuts
+    if break_reels == [] or (data["Products"][0]["StockNote"] != "In Stock" and data["Products"][1]["StockNote"] == "In Stock"):
+        print("HMM")
+        bva, row['Quantity'] = breakcutloop(break_cuts, quantity)
+        return bva, row
+    #else in the case that everything is available or completely out of stock
+    else:
+        if break_reels[0]['BreakQuantity']<= quantity:
+            i=0
+            while i*break_reels[0]['BreakQuantity']<quantity:
+                i+=1
+            # Unit Price * one over needed reels
+            bvb = math.ceil(((float(break_reels[0]['UnitPrice']*(i)*break_reels[0]['BreakQuantity']))*100))/100
+            #cut calculator
+            break_cut_cost, quantity = breakcutloop (break_cuts, (quantity - (break_reels[0]['BreakQuantity']*(i-1))))
+            quantity = quantity + break_reels[i]['BreakQuantity']*(i-1)
+            #make up difference with cuts
+            bva = math.ceil(((float(break_reels[i]['UnitPrice']*(i-1)*break_reels[i]['BreakQuantity']))*100))/100 + break_cut_cost
             if bvb <= bva:
-                row['Quantity'] = break_values[i-1]['BreakQuantity']
-                print(" This would total to £"+str(bva)+ ". However at a quantity of "+str(break_values[i-1]['BreakQuantity'])+ " it would cost £"+str(bvb)+".")
+                row['Quantity'] = quantity
                 return bvb, row
             else:
+                row['Quantity'] = quantity
                 return bva, row
-
-        
-    
+        else:
+            for i in range(1,len(break_reels)):
+                if break_reels[i]['BreakQuantity']<= quantity:
+                    j=0
+                    while j*break_reels[i]['BreakQuantity']<quantity:
+                        j+=1
+                    #an entire break value above
+                    bvc = math.ceil(((float(break_reels[i-1]['UnitPrice']*break_reels[i-1]['BreakQuantity']))*100))/100
+                    #an extra lot added
+                    bvb = math.ceil(((float(break_reels[i]['UnitPrice']*(j)*break_reels[i]['BreakQuantity']))*100))/100
+                    break_cut_cost, quantity = breakcutloop (break_cuts, (quantity - (break_reels[i]['BreakQuantity']*(j-1))))
+                    quantity = quantity + break_reels[i]['BreakQuantity']*(j-1)
+                    #make up difference with cuts
+                    bva = math.ceil(((float(break_reels[i]['UnitPrice']*(j-1)*break_reels[i]['BreakQuantity']))*100))/100 + break_cut_cost
+                    if bvc <= bvb and bvc <= bva:
+                        row['Quantity'] = quantity
+                        return bvc, row
+                    elif bvb <= bva:
+                        row['Quantity'] = quantity
+                        return bvb, row
+                    else:
+                        row['Quantity'] = quantity
+                        return bva, row
+                
+def breakcutloop ( break_cuts, quantity):
+    print(break_cuts)
+    print(quantity)
+    if break_cuts[0]['BreakQuantity']<= quantity:
+        return math.ceil(((float(break_cuts[0]['UnitPrice'])*int(quantity))*100))/100, quantity
+    for i in range(1,len(break_cuts)):
+        if break_cuts[i]['BreakQuantity']<= quantity:
+            bva = math.ceil(((float(break_cuts[i]['UnitPrice'])*int(quantity))*100))/100
+            bvb = math.ceil(((float(break_cuts[i-1]['UnitPrice'])*int(break_cuts[i-1]['BreakQuantity']))*100))/100
+            if bvb <= bva:
+                quantity = break_cuts[i-1]['BreakQuantity']
+                return bvb, quantity
+            else:
+                return bva, quantity
 
 def priceup (row,alt = "0"):
     #use the expected stock code
@@ -179,7 +232,6 @@ def keywordsearch(row):
 def response_handler(row, pricing_response):
     global total_cost, out_of_stock_cost, swaps
     pricing_data = pricing_response.json()
-    print(pricing_data)
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
@@ -226,11 +278,22 @@ def response_handler(row, pricing_response):
     else:
         cost,row = totalup(row, pricing_data)
         if pricing_data["Products"][0]["StockNote"] != "In Stock":
-            print(" "+row['Stock Code'] + " would be purchased at a total of £"+ str(cost)+", but is out of stock.\n")
-            out_of_stock_cost += cost
-            return True, row
+            if len(pricing_data["Products"][0])>1:
+                if pricing_data["Products"][1]["StockNote"] != "In Stock":
+                    print(" "+row['Stock Code'] + " would be purchased at a total of £"+ str(cost)+", but is out of stock.\n")
+                    out_of_stock_cost += cost
+                    return True, row
+                else:
+                    print(" "+row['Stock Code'] +" can be purchased for a total of £"+ str(cost)+", but relies on cut tape only as tape & reel is out of stock.\n")
+                    total_cost += cost
+                    print(" Current total is: " + str(total_cost)+"\n")
+                    return True, row
+            else:
+                print(" "+row['Stock Code'] + " would be purchased at a total of £"+ str(cost)+", but is out of stock.\n")
+                out_of_stock_cost += cost
+                return True, row
         else:
-            print(" "+row['Stock Code'] + " can be purchased for a total of  £"+ str(cost))
+            print(" "+row['Stock Code'] + " can be purchased for a total of £"+ str(cost)+"\n")
             total_cost += cost
             print(" Current total is: " + str(total_cost)+"\n")
             return True, row
@@ -243,10 +306,13 @@ for index, row in df.iterrows():
         pricing_response = priceup(row)
         complete, row = response_handler(row, pricing_response)
     
-print("\n\n ------------------------------------------\n Miss matching stock codes are as follows:\n")
-for item in missing_components:
-    print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
-print(" ------------------------------------------\n")
+
+#end output
+if missing_components != []:
+    print("\n\n ------------------------------------------\n Miss matching stock codes are as follows:\n")
+    for item in missing_components:
+        print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
+    print(" ------------------------------------------\n")
 print("\n ----------------------------\n The total cost is £{:0.2f}\n ----------------------------\n".format(round(total_cost,2)))
 if(out_of_stock_cost>0):
     print("\n --------------------------------------------\n The cost of out of stock items is £{:0.2f}\n --------------------------------------------\n".format(round(out_of_stock_cost,2)))
