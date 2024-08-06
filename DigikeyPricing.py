@@ -38,6 +38,7 @@ if len(sys.argv)== 3:
     except:
         sys.exit("\n The BOM file is malformed and needs to contain one \'Quantity\' column, one \'Stock Code\' column and one \'Value\' column.")
     if not (df['Quantity'].dtype=='int32' or df['Quantity'].dtype=='int64'):
+        print(df['Quantity'])
         sys.exit("\n The Quantity column must only contains integers")
     if not (df['Stock Code'].dtype=='object' and df['Value'].dtype=='object'):
         sys.exit("\n The Stock Code and Value column must only contains objects e.g. strings.")
@@ -186,7 +187,9 @@ def breakcutloop (break_cuts, quantity):
     for i in range(1,len(break_cuts)):
         if break_cuts[i]['BreakQuantity']<= quantity:
             bva = math.ceil(((float(break_cuts[i]['UnitPrice'])*int(quantity))*100))/100
+            print(break_cuts[i]['UnitPrice'])
             bvb = math.ceil(((float(break_cuts[i-1]['UnitPrice'])*int(break_cuts[i-1]['BreakQuantity']))*100))/100
+            print(break_cuts[i-1]['UnitPrice'])
             if bvb <= bva:
                 quantity = break_cuts[i-1]['BreakQuantity']               
                 return bvb, quantity
@@ -271,7 +274,7 @@ def response_handler(row, pricing_response):
             #calculate what the quantity must be rounded up to
             multiple = int(pricing_data['title'].replace(" "+row['Stock Code'],'').split(" ")[-1])
             row['Quantity']= (int(row['Quantity'])//multiple +1) * multiple
-            print(" needs to purchased in multiples of "+str(multiple)+" and so will be purchased at a volume of" +str(row['Quantity'])+".")
+            print(" needs to purchased in multiples of "+str(multiple)+" and so will be purchased at a volume of " +str(row['Quantity'])+".")
             return False, row
         if re.search(r"([A-Za-z]+( [A-Za-z]+)+) '[0-9]+' ([A-Za-z0-9]+( [A-Za-z0-9]+)+)\.",pricing_data['detail']):
             print(" \n The quantity of item "+row['Stock Code']+" is likely too high (e.g. over 2,147,483,647) or is otherwise impossible to process.\n")
