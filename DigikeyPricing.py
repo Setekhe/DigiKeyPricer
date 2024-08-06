@@ -131,7 +131,10 @@ def totalup (row, data):
     #if their are no reel options or they are out of stock, only use cuts
     if break_reels == [] or (data["Products"][0]["StockNote"] != "In Stock" and data["Products"][1]["StockNote"] == "In Stock"):
         bva, row['Quantity'] = breakcutloop(break_cuts, quantity)
-        print(" should be acquired by purchasing " +str(row['Quantity'])+" units of cut tape.")
+        if len(data["Products"][0]["PackageTypes"])==1:
+            print(" should be acquired by purchasing " +str(row['Quantity'])+" units of "+ data["Products"][0]["PackageTypes"][0])
+        else:
+            print(" should be acquired by purchasing " +str(row['Quantity'])+" units of "+ data["Products"][0]["PackageTypes"][1])
         return bva, row
     #else in the case that everything is available or completely out of stock
     else:
@@ -148,11 +151,11 @@ def totalup (row, data):
             bva = math.ceil(((float(break_reels[0]['UnitPrice']*(i-1)*break_reels[-1]['BreakQuantity']))*100))/100 + break_cut_cost
             if bvb <= bva:
                 row['Quantity'] = (i)*break_reels[-1]['BreakQuantity']
-                print(" should be acquired by purchasing " +str(row['Quantity'])+" units of tape & reel.")
+                print(" should be acquired by purchasing " +str(row['Quantity'])+" units of Tape & Reel (TR).")
                 return bvb, row
             else:
                 row['Quantity'] = quantity
-                print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(i-1))+" units of tape & reel and "+str(row['Quantity']-break_reels[0]['BreakQuantity']*(i-1))+" units of cut tape.")
+                print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(i-1))+" units of Tape & Reel (TR) and "+str(row['Quantity']-break_reels[0]['BreakQuantity']*(i-1))+" units of Cut Tape (CT).")
                 return bva, row
         else:
             for i in range(1,len(break_reels)):
@@ -170,15 +173,15 @@ def totalup (row, data):
                     bva = math.ceil(((float(break_reels[i]['UnitPrice']*(j-1)*break_reels[-1]['BreakQuantity']))*100))/100 + break_cut_cost
                     if bvc <= bvb and bvc <= bva:
                         row['Quantity'] = break_reels[i-1]['BreakQuantity']
-                        print(" should be acquired by purchasing " +str(row['Quantity'])+" units of tape & reel.")
+                        print(" should be acquired by purchasing " +str(row['Quantity'])+" units of Tape & Reel (TR).")
                         return bvc, row
                     elif bvb <= bva:
                         row['Quantity'] = (j)*break_reels[-1]['BreakQuantity']
-                        print(" should be acquired by purchasing " +str(row['Quantity'])+" units of tape & reel.")
+                        print(" should be acquired by purchasing " +str(row['Quantity'])+" units of Tape & Reel (TR).")
                         return bvb, row
                     else:
                         row['Quantity'] = quantity
-                        print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(j-1))+" units of tape & reel and"+str(row['Quantity']-break_reels[-1]['BreakQuantity']*(j-1))+" units of cut tape.")
+                        print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(j-1))+" units of Tape & Reel (TR) and"+str(row['Quantity']-break_reels[-1]['BreakQuantity']*(j-1))+" units of Cut Tape (CT).")
                         return bva, row
                 
 def breakcutloop (break_cuts, quantity):
@@ -187,9 +190,7 @@ def breakcutloop (break_cuts, quantity):
     for i in range(1,len(break_cuts)):
         if break_cuts[i]['BreakQuantity']<= quantity:
             bva = math.ceil(((float(break_cuts[i]['UnitPrice'])*int(quantity))*100))/100
-            print(break_cuts[i]['UnitPrice'])
             bvb = math.ceil(((float(break_cuts[i-1]['UnitPrice'])*int(break_cuts[i-1]['BreakQuantity']))*100))/100
-            print(break_cuts[i-1]['UnitPrice'])
             if bvb <= bva:
                 quantity = break_cuts[i-1]['BreakQuantity']               
                 return bvb, quantity
@@ -291,7 +292,7 @@ def response_handler(row, pricing_response):
                     out_of_stock_cost += cost
                     return True, row
                 else:
-                    print(" "+row['Stock Code'] +" can be purchased for a total of £"+ str(cost)+", but relies on cut tape only as tape & reel is out of stock.\n")
+                    print(" "+row['Stock Code'] +" can be purchased for a total of £"+ str(cost)+", but relies on Cut Tape (CT) only as Tape & Reel (TR) is out of stock.\n")
                     total_cost += cost
                     print(" Current total is: " + str(total_cost)+"\n")
                     return True, row
