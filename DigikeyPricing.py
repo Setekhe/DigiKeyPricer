@@ -20,7 +20,7 @@ logged_in = False
 missing_components = []
 total_cost = 0
 out_of_stock_cost = 0
-common_deliminators = [",","_","-"," ","/","~"]
+common_delimiters = [",","_","-"," ","/","~"]
 swaps = 0
 #token api url
 url = 'https://api.digikey.com/v1/oauth2/token'
@@ -28,20 +28,19 @@ df = {}
 #This script takes 2 arguments
 if len(sys.argv)== 3:
     if not sys.argv[2].isdigit():
-        sys.exit("\n The second argument must be a positive integer > 0.")
+        sys.exit("\n The second argument must be a positive integer > 0.\n")
     try:
         df = pd.read_csv(sys.argv[1])
     except:
-        sys.exit("\n The first argument must be a string. It must be the name of the CSV formatted BOM file located in the same folder as this is being run, or be the path to the file.")
+        sys.exit("\n The first argument must be a string. It must be the name of the CSV formatted BOM file located in the same folder as this is being run, or be the path to the file.\n")
     try:
         df = df[['Quantity','Value','Stock Code']]
     except:
-        sys.exit("\n The BOM file is malformed and needs to contain one \'Quantity\' column, one \'Stock Code\' column and one \'Value\' column.")
-    if not (df['Quantity'].dtype=='int32' or df['Quantity'].dtype=='int64'):
-        print(df['Quantity'])
-        sys.exit("\n The Quantity column must only contains integers")
+        sys.exit("\n The BOM file is malformed and needs to contain one \'Quantity\' column, one \'Stock Code\' column and one \'Value\' column.\n")
+    if not (df['Quantity'].apply(lambda x: isinstance(x, int) and x > 0).all()):
+        sys.exit("\n The Quantity column must only contains integers.\n")
     if not (df['Stock Code'].dtype=='object' and df['Value'].dtype=='object'):
-        sys.exit("\n The Stock Code and Value column must only contains objects e.g. strings.")
+        sys.exit("\n The Stock Code and Value column must only contains objects e.g. strings.\n")
     #manipulate the data as needed
     df['Quantity']*=int(sys.argv[2])
     #NO FIT conditions
@@ -181,7 +180,7 @@ def totalup (row, data):
                         return bvb, row
                     else:
                         row['Quantity'] = quantity
-                        print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(j-1))+" units of Tape & Reel (TR) and"+str(row['Quantity']-break_reels[-1]['BreakQuantity']*(j-1))+" units of Cut Tape (CT).")
+                        print(" should be acquired by purchasing " +str(break_reels[-1]['BreakQuantity']*(j-1))+" units of Tape & Reel (TR) and "+str(row['Quantity']-break_reels[-1]['BreakQuantity']*(j-1))+" units of Cut Tape (CT).")
                         return bva, row
                 
 def breakcutloop (break_cuts, quantity):
@@ -240,21 +239,22 @@ def keywordsearch(row):
 def response_handler(row, pricing_response):
     global total_cost, out_of_stock_cost, swaps
     pricing_data = pricing_response.json()
+    name = row['Stock Code']
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
         if 'PART_NOT_FOUND' in pricing_data['title']:
-            if any(char in row['Stock Code'] for char in common_deliminators):
-                print(" cannot be found. Will attempt with a different deliminator.\n")
-                if swaps >= len(common_deliminators):
-                    print("\n "+row['Stock Code']+ " cannot be found using any common deliminators.\n")
+            if any(char in row['Stock Code'] for char in common_delimiters):
+                if swaps >= len(common_delimiters):
+                    row['Stock Code'] = name
+                    print("\n "+row['Stock Code']+ " cannot be found using any common delimiters.\n")
                     missing_components.append(row)
                     swaps = 0
                     return True, row
                 else:
-                    for char in common_deliminators:
+                    for char in common_delimiters:
                         if char in row['Stock Code']:
-                            row['Stock Code'] = row['Stock Code'].replace(char, common_deliminators[swaps])
+                            row['Stock Code'] = row['Stock Code'].replace(char, common_delimiters[swaps])
                     swaps += 1
                     return False, row
             else:
@@ -303,7 +303,7 @@ def response_handler(row, pricing_response):
         else:
             print(" "+row['Stock Code'] + " can be purchased for a total of £"+ str(cost)+"\n")
             total_cost += cost
-            print(" Current total is: " + str(total_cost)+"\n")
+            print(" Current total is £{:0.2f}\n".format(round(total_cost,2)))
             return True, row
 print("\n")
 for index, row in df.iterrows():
@@ -321,6 +321,6 @@ if missing_components != []:
     for item in missing_components:
         print(" "+getattr(item, 'Stock Code')+" with the attached value of "+getattr(item, 'Value')+"\n")
     print(" ------------------------------------------\n")
-print("\n ----------------------------\n The total cost is £{:0.2f}\n ----------------------------\n".format(round(total_cost,2)))
+print("\n -----------------------------------------------\n The total cost of available items is £{:0.2f}\n -----------------------------------------------\n".format(round(total_cost,2)))
 if(out_of_stock_cost>0):
     print("\n --------------------------------------------\n The cost of out of stock items is £{:0.2f}\n --------------------------------------------\n".format(round(out_of_stock_cost,2)))
