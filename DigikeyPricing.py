@@ -239,14 +239,12 @@ def keywordsearch(row):
 def response_handler(row, pricing_response):
     global total_cost, out_of_stock_cost, swaps
     pricing_data = pricing_response.json()
-    name = row['Stock Code']
     #if the response reports an error with the request
     if pricing_response.status_code == 404:
         #if the part isn't found add it to the list of missing item matches
         if 'PART_NOT_FOUND' in pricing_data['title']:
             if any(char in row['Stock Code'] for char in common_delimiters):
                 if swaps >= len(common_delimiters):
-                    row['Stock Code'] = name
                     print("\n "+row['Stock Code']+ " cannot be found using any common delimiters.\n")
                     missing_components.append(row)
                     swaps = 0
